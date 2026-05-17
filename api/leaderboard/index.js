@@ -47,6 +47,10 @@ async function saveWin(body = {}) {
 
   try {
     const { resource } = await item.read();
+    if (!resource) {
+      return await createWinRecord(container, id, winner);
+    }
+
     const nextRecord = {
       ...resource,
       totalWins: Number(resource.totalWins || 0) + 1,
@@ -56,19 +60,22 @@ async function saveWin(body = {}) {
     return { status: 200, body: toClientRecord(saved) };
   } catch (error) {
     if (error.code !== 404) throw error;
-
-    const record = {
-      id,
-      type: 'winRecord',
-      player1: winner[0],
-      player2: winner[1],
-      totalWins: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    const { resource: saved } = await container.items.create(record);
-    return { status: 201, body: toClientRecord(saved) };
+    return await createWinRecord(container, id, winner);
   }
+}
+
+async function createWinRecord(container, id, winner) {
+  const record = {
+    id,
+    type: 'winRecord',
+    player1: winner[0],
+    player2: winner[1],
+    totalWins: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const { resource: saved } = await container.items.create(record);
+  return { status: 201, body: toClientRecord(saved) };
 }
 
 async function clearLeaderboard(req) {

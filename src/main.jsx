@@ -205,6 +205,7 @@ function App() {
     } catch (error) {
       setLedgerError(error.message);
       setLedgerStatus('Final winner was not saved to the shared database.');
+      await loadRecords();
     }
   };
 
