@@ -345,6 +345,30 @@ h2 {
   box-shadow: var(--shadow);
 }
 
+.leaderboard-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.leaderboard-actions .ghost-button {
+  min-width: 130px;
+}
+
+.ledger-status {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.ledger-status.error {
+  border-color: rgba(243, 85, 218, 0.45);
+  color: #ffd3f7;
+}
+
 .table-wrap {
   overflow-x: auto;
   margin-top: 22px;
@@ -417,6 +441,14 @@ td {
 
   .ghost-button {
     width: 100%;
+  }
+
+  .leaderboard-actions {
+    flex-direction: column;
+  }
+
+  .leaderboard-actions .ghost-button {
+    min-width: 0;
   }
 }
 

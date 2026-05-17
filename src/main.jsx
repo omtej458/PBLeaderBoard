@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 
 const PLAYERS = ['Nilesh', 'Mohit', 'Chanikya', 'Guru', 'Avinash', 'Samarth', 'Mukund', 'Omtej'];
-const WIN_RECORD_KEY = 'pickleball-win-records';
 const TARGET_SCORE = 11;
 
 const createMatch = (id) => ({
@@ -25,16 +24,6 @@ const shuffle = (items) => {
   return copy;
 };
 
-const pairKey = (team) => [...team].sort().join('|');
-
-const readRecords = () => {
-  try {
-    return JSON.parse(localStorage.getItem(WIN_RECORD_KEY)) ?? [];
-  } catch {
-    return [];
-  }
-};
-
 function App() {
   const [matches, setMatches] = useState({
     sf1: createMatch('sf1'),
@@ -44,6 +33,8 @@ function App() {
   const [view, setView] = useState('bracket');
   const [mobileStep, setMobileStep] = useState('sf1');
   const [records, setRecords] = useState([]);
+  const [ledgerStatus, setLedgerStatus] = useState('Loading shared leaderboard...');
+  const [ledgerError, setLedgerError] = useState('');
   const [spinState, setSpinState] = useState({
     matchId: null,
     isSpinning: false,
@@ -53,8 +44,28 @@ function App() {
   const confettiRef = useRef(null);
 
   useEffect(() => {
-    setRecords(readRecords());
+    loadRecords();
   }, []);
+
+  const loadRecords = async () => {
+    setLedgerError('');
+    setLedgerStatus('Loading shared leaderboard...');
+
+    try {
+      const response = await fetch('/api/leaderboard');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Could not load leaderboard.');
+      }
+
+      setRecords(data);
+      setLedgerStatus('Shared leaderboard is live.');
+    } catch (error) {
+      setLedgerError(error.message);
+      setLedgerStatus('Leaderboard API is not connected yet.');
+    }
+  };
 
   const usedPlayers = useMemo(() => {
     return [...matches.sf1.team1, ...matches.sf1.team2, ...matches.sf2.team1, ...matches.sf2.team2];
@@ -173,20 +184,58 @@ function App() {
     }
   };
 
-  const saveFinalWinner = (winner) => {
-    const key = pairKey(winner);
-    const currentRecords = readRecords();
-    const existing = currentRecords.find((record) => pairKey([record.player1, record.player2]) === key);
-    const nextRecords = existing
-      ? currentRecords.map((record) => (
-          pairKey([record.player1, record.player2]) === key
-            ? { ...record, totalWins: record.totalWins + 1 }
-            : record
-        ))
-      : [...currentRecords, { player1: [...winner].sort()[0], player2: [...winner].sort()[1], totalWins: 1 }];
+  const saveFinalWinner = async (winner) => {
+    setLedgerError('');
+    setLedgerStatus('Saving final winner...');
 
-    localStorage.setItem(WIN_RECORD_KEY, JSON.stringify(nextRecords));
-    setRecords(nextRecords);
+    try {
+      const response = await fetch('/api/leaderboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ winner })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Could not save final winner.');
+      }
+
+      await loadRecords();
+      setLedgerStatus(`${data.player1} + ${data.player2} saved to shared leaderboard.`);
+    } catch (error) {
+      setLedgerError(error.message);
+      setLedgerStatus('Final winner was not saved to the shared database.');
+    }
+  };
+
+  const clearLedger = async () => {
+    const password = window.prompt('Enter admin password to clear the leaderboard:');
+    if (!password) return;
+
+    setLedgerError('');
+    setLedgerStatus('Clearing shared leaderboard...');
+
+    try {
+      const response = await fetch('/api/leaderboard', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': password
+        },
+        body: JSON.stringify({ password })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Could not clear leaderboard.');
+      }
+
+      setRecords([]);
+      setLedgerStatus('Shared leaderboard cleared.');
+    } catch (error) {
+      setLedgerError(error.message);
+      setLedgerStatus('Leaderboard was not cleared.');
+    }
   };
 
   const launchConfetti = () => {
@@ -323,10 +372,13 @@ function App() {
           </section>
         </>
       ) : (
-        <Leaderboard records={sortedRecords} onClear={() => {
-          localStorage.removeItem(WIN_RECORD_KEY);
-          setRecords([]);
-        }} />
+        <Leaderboard
+          records={sortedRecords}
+          ledgerStatus={ledgerStatus}
+          ledgerError={ledgerError}
+          onRefresh={loadRecords}
+          onClear={clearLedger}
+        />
       )}
     </main>
   );
@@ -443,16 +495,23 @@ function FinalBridge({ matches }) {
   );
 }
 
-function Leaderboard({ records, onClear }) {
+function Leaderboard({ records, ledgerStatus, ledgerError, onRefresh, onClear }) {
   return (
     <section className="leaderboard-panel">
       <div className="leaderboard-heading">
         <div>
-          <p className="eyebrow">localStorage ledger</p>
+          <p className="eyebrow">shared Azure ledger</p>
           <h2>Combination Leaderboard</h2>
         </div>
-        <button className="ghost-button" onClick={onClear} disabled={!records.length}>Clear Ledger</button>
+        <div className="leaderboard-actions">
+          <button className="ghost-button" onClick={onRefresh}>Refresh</button>
+          <button className="ghost-button" onClick={onClear} disabled={!records.length}>Clear Ledger</button>
+        </div>
       </div>
+
+      <p className={`ledger-status ${ledgerError ? 'error' : ''}`}>
+        {ledgerError ? `${ledgerStatus} ${ledgerError}` : ledgerStatus}
+      </p>
 
       {records.length ? (
         <div className="table-wrap">
